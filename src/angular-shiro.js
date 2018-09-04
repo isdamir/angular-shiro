@@ -10,13 +10,13 @@
  * principalDirective, usernamePasswordFormDirective
  */
 
-var angularShiroServicesModule = angular.module('angularShiro.services', []);
+var angularShiroServicesModule = angular.module('angularShiro.services', ['ngCookies']);
 angularShiroServicesModule.provider('authenticator', AuthenticatorProvider);
 angularShiroServicesModule.provider('angularShiroConfig', AngularShiroConfigProvider);
 
-angularShiroServicesModule.factory('subject', [ 'authenticator', 'authorizer', 'authenticationResponseParser',
-	function(authenticator, authorizer, authenticationResponseParser) {
-	    return new Subject(authenticator, authorizer, authenticationResponseParser);
+angularShiroServicesModule.factory('subject', [ 'authenticator', 'authorizer', 'authenticationResponseParser','$cookieStore',
+	function(authenticator, authorizer, authenticationResponseParser, $cookieStore) {
+	    return new Subject(authenticator, authorizer, authenticationResponseParser, $cookieStore);
 	} ]);
 angularShiroServicesModule.factory('usernamePasswordToken', function() {
     return new UsernamePasswordToken();
@@ -60,7 +60,7 @@ for ( var key in directives) {
     moduleDirectives.directive(key, directives[key]);
 }
 
-angular.module('angularShiro', [ 'angularShiro.services', 'angularShiro.directives', 'angularShiro.templates' ]).run(
+angular.module('angularShiro', [ 'angularShiro.services', 'angularShiro.directives', 'angularShiro.templates']).run(
 	function($rootScope, $location, subject, angularShiroConfig, filtersResolver, $log) {
 
 	    var doFilter = function(filtersResolver, $location) {
@@ -71,35 +71,34 @@ angular.module('angularShiro', [ 'angularShiro.services', 'angularShiro.directiv
 		    }
 		}
 	    }
-
 	    $rootScope.$on('$locationChangeStart', function(event, next, current) {
-		var params = $location.search();
-		if (!subject.isAuthenticated() && params.sessionId) {
-		    try {
-			var output = subject.rememberMe(params.sessionId);
-			if (output !== false) {
-			    output.then(function() {
-				doFilter(filtersResolver, $location);
-			    });
-			} else {
-			    $location.search('sessionId', null);
-			    $location.path(angularShiroConfig.login.path);
-			}
-		    } catch (e) {
-			$log.error(e.message);
-			$location.search('sessionId', null);
-			$location.path(angularShiroConfig.login.path);
-		    }
-		} else {
-		    doFilter(filtersResolver, $location);
-		    if (subject.isRemembered() && !params.sessionId) {
-			$location.search('sessionId', subject.getSession(false).getId());
-		    }
-		}
+            var params = $location.search();
+            if (!subject.isAuthenticated() && params.sessionId) {
+                try {
+                    var output = subject.rememberMe(params.sessionId);
+                    if (output !== false) {
+                        output.then(function () {
+                            doFilter(filtersResolver, $location);
+                        });
+                    } else {
+                        $location.search('sessionId', null);
+                        $location.path(angularShiroConfig.login.path);
+                    }
+                } catch (e) {
+                    $log.error(e.message);
+                    $location.search('sessionId', null);
+                    $location.path(angularShiroConfig.login.path);
+                }
+            } else{
+                var state=subject.restoreAuth(angularShiroConfig);
+                doFilter(filtersResolver, $location);
+                if (!state&&subject.isRemembered() && !params.sessionId) {
+                        $location.search('sessionId', subject.getSession(false).getId());
+                    }
+                }
 
 	    });
 	});
-
 /**
  * Return the DOM siblings between the first and last node in the given array.
  * 

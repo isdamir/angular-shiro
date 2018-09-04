@@ -404,9 +404,9 @@ function SessionManager(sessionDAO) {
      * 
      * @return {angularShiro.services.Session} the created `Session` object
      */
-    this.start = function(){
+    this.start = function(sessionId){
 	var session = new Session();
-	this.sessionDAO.create(session);
+	this.sessionDAO.create(session,sessionId);
 	return session;
     };
     /**
@@ -447,7 +447,11 @@ function SessionManager(sessionDAO) {
     this.update = function(session) {
 	this.sessionDAO.update(session);
     };
-    
+    this.delete = function(session) {
+        if(session!==null) {
+            this.sessionDAO.delete(session);
+        }
+    };
 }
 
 /**
@@ -470,8 +474,8 @@ function guid() {
  *              {@link Session} access to the browser session storage
  * 
  */
-function SessionDAO() {
-
+function SessionDAO($cookieStore) {
+    this.cookie=$cookieStore;
     /**
      * 
      * @ngdoc method
@@ -486,11 +490,14 @@ function SessionDAO() {
      *                session the `Session` object
      * @return {object} the unique identifier of the created `Session` object
      */
-    this.create = function(session) {
-	var sessionId = guid();
-	session.setId(sessionId);
-	sessionStorage.setItem(sessionId, angular.toJson(session));
-	return sessionId;
+    this.create = function (session,sessionId) {
+        if(!sessionId){
+            sessionId = guid();
+        }
+        session.setId(sessionId);
+        //sessionStorage.setItem(sessionId, angular.toJson(session));
+        this.cookie.put(sessionId,angular.toJson(session),{'expires': '-1'});
+        return sessionId;
     };
  
     /**
@@ -510,7 +517,7 @@ function SessionDAO() {
      */ 
     this.readSession = function(sessionId) {
 	var session = null;
-	var obj = angular.fromJson(sessionStorage.getItem(sessionId));
+	var obj = angular.fromJson(this.cookie.get(sessionId));
 	if (obj){
 	    session = new Session();
 	    angular.extend(session, obj);	    
@@ -533,7 +540,7 @@ function SessionDAO() {
      *                `session` the Session to update
      */ 
     this.update = function(session) {
-	sessionStorage.setItem(session.getId(), angular.toJson(session));
+        this.cookie.put(session.getId(),angular.toJson(session),{'expires': '-1'});
     };
  
     /**
@@ -550,7 +557,7 @@ function SessionDAO() {
      *                `session` the session to delete.
      */ 
     this.delete = function(session){
-	sessionStorage.removeItem(session.getId());
+        this.cookie.remove(session.getId());
     }; 
  
 // /**

@@ -33,7 +33,7 @@
  * 
  * @since 0.0.1
  */
-function Subject(authenticator, authorizer, authenticationResponseParser) {
+function Subject(authenticator, authorizer, authenticationResponseParser, $cookieStore) {
 
     /**
      * @name Subject#authenticated
@@ -45,11 +45,12 @@ function Subject(authenticator, authorizer, authenticationResponseParser) {
     /**
      * 
      */
-    this.sessionManager = new SessionManager(new SessionDAO());
+    this.sessionManager = new SessionManager(new SessionDAO($cookieStore));
     /**
      * @private
      */
     this.session = null;
+    this.sidSession =null;
     /**
      * @name Subject#authorizer
      * @propertyOf angularShiro.services.Subject
@@ -102,11 +103,17 @@ function Subject(authenticator, authorizer, authenticationResponseParser) {
     this.login = function(token) {
 	var promise = authenticator.authenticate(token);
 	var me = this;
-	promise.then(function(data, status, headers, config) {
-	    var infos = authenticationResponseParser.parse(data);
+	promise.then(function(data) {
+	    var infos = authenticationResponseParser.parse(data[0]);
 	    me.authenticationInfo = infos.authc;
 	    me.authorizer.setAuthorizationInfo(infos.authz);
 	    me.authenticated = true;
+	    //准备存储信息
+        var sidSession = me.getSessionBySid(true,data[3].tokenSid);
+        sidSession.setAttribute('token',data[0]);
+        me.sessionManager.update(sidSession);
+
+        //remeber me应该使用Cookie，当前不处理
 	    if (token.isRememberMe()) {
 		// put the token in session to auto login if needed
 		var session = me.getSession(true);
@@ -134,6 +141,27 @@ function Subject(authenticator, authorizer, authenticationResponseParser) {
 	}
 	return output;
     };
+    this.restoreAuth=function(config) {
+        if(!this.isAuthenticated()){
+            //尝试恢复身份信息到内存
+            var session = this.sessionManager.getSession(config.tokenSid);
+            if (session !== null) {
+                var data = session.getAttribute('token');
+                if(data!==null) {
+                    var infos = authenticationResponseParser.parse(data);
+                    if (infos) {
+                        this.sidSession=session;
+                        this.authenticationInfo = infos.authc;
+                        this.authorizer.setAuthorizationInfo(infos.authz);
+                        this.authenticated = true;
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+        return true;
+    }
     /**
      * @ngdoc method
      * @name Subject#logout
@@ -150,6 +178,9 @@ function Subject(authenticator, authorizer, authenticationResponseParser) {
      */
     this.logout = function() {
 	this.clear();
+	this.sessionManager.delete(this.session);
+	this.sessionManager.delete(this.sidSession);
+
     };
 
     /**
@@ -166,7 +197,12 @@ function Subject(authenticator, authorizer, authenticationResponseParser) {
 	}
 	return this.session;
     };
-
+    this.getSessionBySid = function(create,sessionId) {
+        if (this.sidSession === null && create) {
+            this.sidSession=this.sessionManager.start(sessionId);
+        }
+        return this.sidSession;
+    };
     /**
      * @ngdoc method
      * @name Subject#getPrincipal

@@ -1,6 +1,6 @@
 /**
  * angular-shiro
- * @version v0.1.3 - 2015-07-29
+ * @version v0.1.3 - 2018-09-04
  * @link https://github.com/gnavarro77/angular-shiro
  * @author Gilles Navarro ()
  * @license MIT License, http://www.opensource.org/licenses/MIT
@@ -24,7 +24,8 @@
         logout: {
           api: '/api/logout',
           path: '/'
-        }
+        },
+        tokenSid: 'angularShiroSid'
       };
     /**
      * 
@@ -126,6 +127,9 @@
     this.setAuthenticateUrl = function (authenticateUrl) {
       options.login.api = authenticateUrl;
     };
+    this.setTokenSid = function (tsid) {
+      options.tokenSid = tsid;
+    };
     this.$get = [function () {
         return options;
       }];
@@ -145,15 +149,26 @@
             }
             if (config && config.login && config.login.api) {
               var deferred = $q.defer();
+              var sharioConfig = config;
               $http.post(config.login.api, {
                 token: {
                   principal: token.getPrincipal(),
                   credentials: token.getCredentials()
                 }
-              }).success(function (data, status, headers, config) {
-                deferred.resolve(data);
-              }).error(function (data, status, headers, config) {
-                deferred.reject(data);
+              }).success(function (data, status, headers) {
+                deferred.resolve([
+                  data,
+                  status,
+                  headers,
+                  sharioConfig
+                ]);
+              }).error(function (data, status, headers) {
+                deferred.reject([
+                  data,
+                  status,
+                  headers,
+                  sharioConfig
+                ]);
               });
               promise = deferred.promise;
             } else {
@@ -1313,9 +1328,9 @@
      * 
      * @return {angularShiro.services.Session} the created `Session` object
      */
-    this.start = function () {
+    this.start = function (sessionId) {
       var session = new Session();
-      this.sessionDAO.create(session);
+      this.sessionDAO.create(session, sessionId);
       return session;
     };
     /**
@@ -1355,6 +1370,11 @@
     this.update = function (session) {
       this.sessionDAO.update(session);
     };
+    this.delete = function (session) {
+      if (session !== null) {
+        this.sessionDAO.delete(session);
+      }
+    };
   }
   /**
  * Function used to generate a unique session id
@@ -1375,7 +1395,8 @@
  *              {@link Session} access to the browser session storage
  * 
  */
-  function SessionDAO() {
+  function SessionDAO($cookieStore) {
+    this.cookie = $cookieStore;
     /**
      * 
      * @ngdoc method
@@ -1390,10 +1411,13 @@
      *                session the `Session` object
      * @return {object} the unique identifier of the created `Session` object
      */
-    this.create = function (session) {
-      var sessionId = guid();
+    this.create = function (session, sessionId) {
+      if (!sessionId) {
+        sessionId = guid();
+      }
       session.setId(sessionId);
-      sessionStorage.setItem(sessionId, angular.toJson(session));
+      //sessionStorage.setItem(sessionId, angular.toJson(session));
+      this.cookie.put(sessionId, angular.toJson(session), { 'expires': '-1' });
       return sessionId;
     };
     /**
@@ -1413,7 +1437,7 @@
      */
     this.readSession = function (sessionId) {
       var session = null;
-      var obj = angular.fromJson(sessionStorage.getItem(sessionId));
+      var obj = angular.fromJson(this.cookie.get(sessionId));
       if (obj) {
         session = new Session();
         angular.extend(session, obj);
@@ -1435,7 +1459,7 @@
      *                `session` the Session to update
      */
     this.update = function (session) {
-      sessionStorage.setItem(session.getId(), angular.toJson(session));
+      this.cookie.put(session.getId(), angular.toJson(session), { 'expires': '-1' });
     };
     /**
      * 
@@ -1451,7 +1475,7 @@
      *                `session` the session to delete.
      */
     this.delete = function (session) {
-      sessionStorage.removeItem(session.getId());
+      this.cookie.remove(session.getId());
     };  // /**
         // *
         // * @ngdoc method
@@ -1960,7 +1984,7 @@
  * 
  * @since 0.0.1
  */
-  function Subject(authenticator, authorizer, authenticationResponseParser) {
+  function Subject(authenticator, authorizer, authenticationResponseParser, $cookieStore) {
     /**
      * @name Subject#authenticated
      * @description flag indicating if the current Subject is authenticated or
@@ -1971,11 +1995,12 @@
     /**
      * 
      */
-    this.sessionManager = new SessionManager(new SessionDAO());
+    this.sessionManager = new SessionManager(new SessionDAO($cookieStore));
     /**
      * @private
      */
     this.session = null;
+    this.sidSession = null;
     /**
      * @name Subject#authorizer
      * @propertyOf angularShiro.services.Subject
@@ -2025,11 +2050,16 @@
     this.login = function (token) {
       var promise = authenticator.authenticate(token);
       var me = this;
-      promise.then(function (data, status, headers, config) {
-        var infos = authenticationResponseParser.parse(data);
+      promise.then(function (data) {
+        var infos = authenticationResponseParser.parse(data[0]);
         me.authenticationInfo = infos.authc;
         me.authorizer.setAuthorizationInfo(infos.authz);
         me.authenticated = true;
+        //׼���洢��Ϣ
+        var sidSession = me.getSessionBySid(true, data[3].tokenSid);
+        sidSession.setAttribute('token', data[0]);
+        me.sessionManager.update(sidSession);
+        //remeber meӦ��ʹ��Cookie����ǰ������
         if (token.isRememberMe()) {
           // put the token in session to auto login if needed
           var session = me.getSession(true);
@@ -2057,6 +2087,27 @@
       }
       return output;
     };
+    this.restoreAuth = function (config) {
+      if (!this.isAuthenticated()) {
+        //���Իָ�������Ϣ���ڴ�
+        var session = this.sessionManager.getSession(config.tokenSid);
+        if (session !== null) {
+          var data = session.getAttribute('token');
+          if (data !== null) {
+            var infos = authenticationResponseParser.parse(data);
+            if (infos) {
+              this.sidSession = session;
+              this.authenticationInfo = infos.authc;
+              this.authorizer.setAuthorizationInfo(infos.authz);
+              this.authenticated = true;
+              return true;
+            }
+          }
+        }
+        return false;
+      }
+      return true;
+    };
     /**
      * @ngdoc method
      * @name Subject#logout
@@ -2073,6 +2124,8 @@
      */
     this.logout = function () {
       this.clear();
+      this.sessionManager.delete(this.session);
+      this.sessionManager.delete(this.sidSession);
     };
     /**
      * Returns the application <code>Session</code> associated with this
@@ -2087,6 +2140,12 @@
         this.session = this.sessionManager.start();
       }
       return this.session;
+    };
+    this.getSessionBySid = function (create, sessionId) {
+      if (this.sidSession === null && create) {
+        this.sidSession = this.sessionManager.start(sessionId);
+      }
+      return this.sidSession;
     };
     /**
      * @ngdoc method
@@ -2820,15 +2879,16 @@
         };
       }
     ];
-  var angularShiroServicesModule = angular.module('angularShiro.services', []);
+  var angularShiroServicesModule = angular.module('angularShiro.services', ['ngCookies']);
   angularShiroServicesModule.provider('authenticator', AuthenticatorProvider);
   angularShiroServicesModule.provider('angularShiroConfig', AngularShiroConfigProvider);
   angularShiroServicesModule.factory('subject', [
     'authenticator',
     'authorizer',
     'authenticationResponseParser',
-    function (authenticator, authorizer, authenticationResponseParser) {
-      return new Subject(authenticator, authorizer, authenticationResponseParser);
+    '$cookieStore',
+    function (authenticator, authorizer, authenticationResponseParser, $cookieStore) {
+      return new Subject(authenticator, authorizer, authenticationResponseParser, $cookieStore);
     }
   ]);
   angularShiroServicesModule.factory('usernamePasswordToken', function () {
@@ -2906,8 +2966,9 @@
             $location.path(angularShiroConfig.login.path);
           }
         } else {
+          var state = subject.restoreAuth(angularShiroConfig);
           doFilter(filtersResolver, $location);
-          if (subject.isRemembered() && !params.sessionId) {
+          if (!state && subject.isRemembered() && !params.sessionId) {
             $location.search('sessionId', subject.getSession(false).getId());
           }
         }

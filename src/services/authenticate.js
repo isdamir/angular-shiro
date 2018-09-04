@@ -40,18 +40,18 @@ function AuthenticatorProvider() {
 			if (!token || !token.getPrincipal() || !token.getCredentials()) {
 			    throw '[Autheticate] Can not authenticate. Invalid token provided!';
 			}
-
 			if (config && config.login && config.login.api) {
 			    var deferred = $q.defer();
+			    var sharioConfig=config;
 			    $http.post(config.login.api, {
 				token : {
 				    principal : token.getPrincipal(),
 				    credentials : token.getCredentials()
 				}
-			    }).success(function(data, status, headers, config) {
-				deferred.resolve(data);
-			    }).error(function(data, status, headers, config) {
-				deferred.reject(data);
+			    }).success(function(data, status, headers) {
+				deferred.resolve([data,status,headers,sharioConfig]);
+			    }).error(function(data, status, headers) {
+				deferred.reject([data,status,headers,sharioConfig]);
 			    });
 			    promise = deferred.promise;
 			} else {
