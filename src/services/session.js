@@ -405,9 +405,9 @@ function SessionManager(sessionDAO) {
      * @return {angularShiro.services.Session} the created `Session` object
      */
     this.start = function(sessionId){
-	var session = new Session();
-	this.sessionDAO.create(session,sessionId);
-	return session;
+        var session = new Session();
+        this.sessionDAO.create(session, sessionId);
+        return session;
     };
     /**
      * 
@@ -445,7 +445,10 @@ function SessionManager(sessionDAO) {
      *                session the session to update
      */
     this.update = function(session) {
-	this.sessionDAO.update(session);
+        this.sessionDAO.update(session);
+    };
+    this.updateSid = function(session) {
+	    this.sessionDAO.updateSid(session);
     };
     this.delete = function(session) {
         if(session!==null) {
@@ -474,8 +477,52 @@ function guid() {
  *              {@link Session} access to the browser session storage
  * 
  */
-function SessionDAO($cookieStore) {
-    this.cookie=$cookieStore;
+function SessionDAO() {
+    this.CookieUtil = {
+        get: function (name){
+            var cookieName = encodeURIComponent(name) + "=",
+                cookieStart = document.cookie.indexOf(cookieName),
+                cookieValue = null,
+                cookieEnd;
+
+            if (cookieStart > -1){
+                cookieEnd = document.cookie.indexOf(";", cookieStart);
+                if (cookieEnd == -1){
+                    cookieEnd = document.cookie.length;
+                }
+                cookieValue = decodeURIComponent(document.cookie.substring(cookieStart + cookieName.length, cookieEnd));
+            }
+
+            return cookieValue;
+        },
+
+        set: function (name, value, expires, path, domain, secure) {
+            var cookieText = encodeURIComponent(name) + "=" + encodeURIComponent(value);
+
+            if (expires instanceof Date) {
+                cookieText += "; expires=" + expires.toGMTString();
+            }
+
+            if (path) {
+                cookieText += "; path=" + path;
+            }
+
+            if (domain) {
+                cookieText += "; domain=" + domain;
+            }
+
+            if (secure) {
+                cookieText += "; secure";
+            }
+
+            document.cookie = cookieText;
+        },
+
+        unset: function (name, path, domain, secure){
+            this.set(name, "", new Date(0), path, domain, secure);
+        }
+
+    };
     /**
      * 
      * @ngdoc method
@@ -495,8 +542,7 @@ function SessionDAO($cookieStore) {
             sessionId = guid();
         }
         session.setId(sessionId);
-        //sessionStorage.setItem(sessionId, angular.toJson(session));
-        this.cookie.put(sessionId,angular.toJson(session),{'expires': '-1'});
+        this.CookieUtil.set(sessionId,angular.toJson(session));
         return sessionId;
     };
  
@@ -517,7 +563,7 @@ function SessionDAO($cookieStore) {
      */ 
     this.readSession = function(sessionId) {
 	var session = null;
-	var obj = angular.fromJson(this.cookie.get(sessionId));
+	var obj = angular.fromJson(this.CookieUtil.get(sessionId));
 	if (obj){
 	    session = new Session();
 	    angular.extend(session, obj);	    
@@ -538,11 +584,15 @@ function SessionDAO($cookieStore) {
      * 
      * @param {angularShiro.services.Session}
      *                `session` the Session to update
-     */ 
-    this.update = function(session) {
-        this.cookie.put(session.getId(),angular.toJson(session),{'expires': '-1'});
-    };
- 
+     */
+    this.update = function (session) {
+        var now = new Date();
+        var exp = new Date(now.getFullYear(), now.getMonth(), now.getDate()+30);
+        this.CookieUtil.set(session.getId(),angular.toJson(session),exp);
+    }
+    this.updateSid = function (session) {
+        this.CookieUtil.set(session.getId(),angular.toJson(session));
+    }
     /**
      * 
      * @ngdoc method
@@ -557,7 +607,7 @@ function SessionDAO($cookieStore) {
      *                `session` the session to delete.
      */ 
     this.delete = function(session){
-        this.cookie.remove(session.getId());
+        this.CookieUtil.unset(session.getId());
     }; 
  
 // /**

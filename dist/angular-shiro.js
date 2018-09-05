@@ -1,6 +1,6 @@
 /**
  * angular-shiro
- * @version v0.1.3 - 2018-09-04
+ * @version v0.1.3 - 2018-09-05
  * @link https://github.com/gnavarro77/angular-shiro
  * @author Gilles Navarro ()
  * @license MIT License, http://www.opensource.org/licenses/MIT
@@ -25,7 +25,8 @@
           api: '/api/logout',
           path: '/'
         },
-        tokenSid: 'angularShiroSid'
+        tokenSid: 'angularShiroSid',
+        remeberSid: 'angularShiroRemeber'
       };
     /**
      * 
@@ -129,6 +130,9 @@
     };
     this.setTokenSid = function (tsid) {
       options.tokenSid = tsid;
+    };
+    this.setRemeberSid = function (tsid) {
+      options.remeberSid = tsid;
     };
     this.$get = [function () {
         return options;
@@ -1370,6 +1374,9 @@
     this.update = function (session) {
       this.sessionDAO.update(session);
     };
+    this.updateSid = function (session) {
+      this.sessionDAO.updateSid(session);
+    };
     this.delete = function (session) {
       if (session !== null) {
         this.sessionDAO.delete(session);
@@ -1395,8 +1402,39 @@
  *              {@link Session} access to the browser session storage
  * 
  */
-  function SessionDAO($cookieStore) {
-    this.cookie = $cookieStore;
+  function SessionDAO() {
+    this.CookieUtil = {
+      get: function (name) {
+        var cookieName = encodeURIComponent(name) + '=', cookieStart = document.cookie.indexOf(cookieName), cookieValue = null, cookieEnd;
+        if (cookieStart > -1) {
+          cookieEnd = document.cookie.indexOf(';', cookieStart);
+          if (cookieEnd == -1) {
+            cookieEnd = document.cookie.length;
+          }
+          cookieValue = decodeURIComponent(document.cookie.substring(cookieStart + cookieName.length, cookieEnd));
+        }
+        return cookieValue;
+      },
+      set: function (name, value, expires, path, domain, secure) {
+        var cookieText = encodeURIComponent(name) + '=' + encodeURIComponent(value);
+        if (expires instanceof Date) {
+          cookieText += '; expires=' + expires.toGMTString();
+        }
+        if (path) {
+          cookieText += '; path=' + path;
+        }
+        if (domain) {
+          cookieText += '; domain=' + domain;
+        }
+        if (secure) {
+          cookieText += '; secure';
+        }
+        document.cookie = cookieText;
+      },
+      unset: function (name, path, domain, secure) {
+        this.set(name, '', new Date(0), path, domain, secure);
+      }
+    };
     /**
      * 
      * @ngdoc method
@@ -1416,8 +1454,7 @@
         sessionId = guid();
       }
       session.setId(sessionId);
-      //sessionStorage.setItem(sessionId, angular.toJson(session));
-      this.cookie.put(sessionId, angular.toJson(session), { 'expires': '-1' });
+      this.CookieUtil.set(sessionId, angular.toJson(session));
       return sessionId;
     };
     /**
@@ -1437,7 +1474,7 @@
      */
     this.readSession = function (sessionId) {
       var session = null;
-      var obj = angular.fromJson(this.cookie.get(sessionId));
+      var obj = angular.fromJson(this.CookieUtil.get(sessionId));
       if (obj) {
         session = new Session();
         angular.extend(session, obj);
@@ -1459,7 +1496,12 @@
      *                `session` the Session to update
      */
     this.update = function (session) {
-      this.cookie.put(session.getId(), angular.toJson(session), { 'expires': '-1' });
+      var now = new Date();
+      var exp = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 30);
+      this.CookieUtil.set(session.getId(), angular.toJson(session), exp);
+    };
+    this.updateSid = function (session) {
+      this.CookieUtil.set(session.getId(), angular.toJson(session));
     };
     /**
      * 
@@ -1475,7 +1517,7 @@
      *                `session` the session to delete.
      */
     this.delete = function (session) {
-      this.cookie.remove(session.getId());
+      this.CookieUtil.unset(session.getId());
     };  // /**
         // *
         // * @ngdoc method
@@ -1984,7 +2026,7 @@
  * 
  * @since 0.0.1
  */
-  function Subject(authenticator, authorizer, authenticationResponseParser, $cookieStore) {
+  function Subject(authenticator, authorizer, authenticationResponseParser) {
     /**
      * @name Subject#authenticated
      * @description flag indicating if the current Subject is authenticated or
@@ -1995,7 +2037,7 @@
     /**
      * 
      */
-    this.sessionManager = new SessionManager(new SessionDAO($cookieStore));
+    this.sessionManager = new SessionManager(new SessionDAO());
     /**
      * @private
      */
@@ -2058,11 +2100,11 @@
         //׼���洢��Ϣ
         var sidSession = me.getSessionBySid(true, data[3].tokenSid);
         sidSession.setAttribute('token', data[0]);
-        me.sessionManager.update(sidSession);
+        me.sessionManager.updateSid(sidSession);
         //remeber meӦ��ʹ��Cookie����ǰ������
         if (token.isRememberMe()) {
           // put the token in session to auto login if needed
-          var session = me.getSession(true);
+          var session = me.getSession(true, data[3].remeberSid);
           session.setAttribute('token', token);
           me.sessionManager.update(session);
           me.remembered = true;
@@ -2088,25 +2130,22 @@
       return output;
     };
     this.restoreAuth = function (config) {
-      if (!this.isAuthenticated()) {
-        //���Իָ�������Ϣ���ڴ�
-        var session = this.sessionManager.getSession(config.tokenSid);
-        if (session !== null) {
-          var data = session.getAttribute('token');
-          if (data !== null) {
-            var infos = authenticationResponseParser.parse(data);
-            if (infos) {
-              this.sidSession = session;
-              this.authenticationInfo = infos.authc;
-              this.authorizer.setAuthorizationInfo(infos.authz);
-              this.authenticated = true;
-              return true;
-            }
+      //���Իָ�������Ϣ���ڴ�
+      var session = this.sessionManager.getSession(config.tokenSid);
+      if (session !== null) {
+        var data = session.getAttribute('token');
+        if (data !== null) {
+          var infos = authenticationResponseParser.parse(data);
+          if (infos) {
+            this.sidSession = session;
+            this.authenticationInfo = infos.authc;
+            this.authorizer.setAuthorizationInfo(infos.authz);
+            this.authenticated = true;
+            return true;
           }
         }
-        return false;
       }
-      return true;
+      return false;
     };
     /**
      * @ngdoc method
@@ -2135,9 +2174,9 @@
      * @return the application <code>Session</code> associated with this
      *         SubjectUser
      */
-    this.getSession = function (create) {
+    this.getSession = function (create, sessionId) {
       if (this.session === null && create) {
-        this.session = this.sessionManager.start();
+        this.session = this.sessionManager.start(sessionId);
       }
       return this.session;
     };
@@ -2879,16 +2918,15 @@
         };
       }
     ];
-  var angularShiroServicesModule = angular.module('angularShiro.services', ['ngCookies']);
+  var angularShiroServicesModule = angular.module('angularShiro.services', []);
   angularShiroServicesModule.provider('authenticator', AuthenticatorProvider);
   angularShiroServicesModule.provider('angularShiroConfig', AngularShiroConfigProvider);
   angularShiroServicesModule.factory('subject', [
     'authenticator',
     'authorizer',
     'authenticationResponseParser',
-    '$cookieStore',
-    function (authenticator, authorizer, authenticationResponseParser, $cookieStore) {
-      return new Subject(authenticator, authorizer, authenticationResponseParser, $cookieStore);
+    function (authenticator, authorizer, authenticationResponseParser) {
+      return new Subject(authenticator, authorizer, authenticationResponseParser);
     }
   ]);
   angularShiroServicesModule.factory('usernamePasswordToken', function () {
@@ -2949,28 +2987,27 @@
       };
       $rootScope.$on('$locationChangeStart', function (event, next, current) {
         var params = $location.search();
-        if (!subject.isAuthenticated() && params.sessionId) {
-          try {
-            var output = subject.rememberMe(params.sessionId);
-            if (output !== false) {
-              output.then(function () {
-                doFilter(filtersResolver, $location);
-              });
-            } else {
-              $location.search('sessionId', null);
+        if (!subject.isAuthenticated()) {
+          var state = subject.restoreAuth(angularShiroConfig);
+          if (state) {
+            doFilter(filtersResolver, $location);
+          } else {
+            try {
+              var output = subject.rememberMe(angularShiroConfig.remeberSid);
+              if (output !== false) {
+                output.then(function () {
+                  doFilter(filtersResolver, $location);
+                });
+              } else {
+                $location.path(angularShiroConfig.login.path);
+              }
+            } catch (e) {
+              $log.error(e.message);
               $location.path(angularShiroConfig.login.path);
             }
-          } catch (e) {
-            $log.error(e.message);
-            $location.search('sessionId', null);
-            $location.path(angularShiroConfig.login.path);
           }
         } else {
-          var state = subject.restoreAuth(angularShiroConfig);
           doFilter(filtersResolver, $location);
-          if (!state && subject.isRemembered() && !params.sessionId) {
-            $location.search('sessionId', subject.getSession(false).getId());
-          }
         }
       });
     }

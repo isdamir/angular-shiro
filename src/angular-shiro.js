@@ -10,13 +10,13 @@
  * principalDirective, usernamePasswordFormDirective
  */
 
-var angularShiroServicesModule = angular.module('angularShiro.services', ['ngCookies']);
+var angularShiroServicesModule = angular.module('angularShiro.services', []);
 angularShiroServicesModule.provider('authenticator', AuthenticatorProvider);
 angularShiroServicesModule.provider('angularShiroConfig', AngularShiroConfigProvider);
 
-angularShiroServicesModule.factory('subject', [ 'authenticator', 'authorizer', 'authenticationResponseParser','$cookieStore',
-	function(authenticator, authorizer, authenticationResponseParser, $cookieStore) {
-	    return new Subject(authenticator, authorizer, authenticationResponseParser, $cookieStore);
+angularShiroServicesModule.factory('subject', [ 'authenticator', 'authorizer', 'authenticationResponseParser',
+	function(authenticator, authorizer, authenticationResponseParser) {
+	    return new Subject(authenticator, authorizer, authenticationResponseParser);
 	} ]);
 angularShiroServicesModule.factory('usernamePasswordToken', function() {
     return new UsernamePasswordToken();
@@ -73,29 +73,28 @@ angular.module('angularShiro', [ 'angularShiro.services', 'angularShiro.directiv
 	    }
 	    $rootScope.$on('$locationChangeStart', function(event, next, current) {
             var params = $location.search();
-            if (!subject.isAuthenticated() && params.sessionId) {
-                try {
-                    var output = subject.rememberMe(params.sessionId);
-                    if (output !== false) {
-                        output.then(function () {
-                            doFilter(filtersResolver, $location);
-                        });
-                    } else {
-                        $location.search('sessionId', null);
+            if (!subject.isAuthenticated()) {
+                var state=subject.restoreAuth(angularShiroConfig);
+                if(state) {
+                    doFilter(filtersResolver, $location);
+                }else{
+                    try {
+                        var output = subject.rememberMe(angularShiroConfig.remeberSid);
+                        if (output !== false) {
+                            output.then(function () {
+                                doFilter(filtersResolver, $location);
+                            });
+                        } else {
+                            $location.path(angularShiroConfig.login.path);
+                        }
+                    } catch (e) {
+                        $log.error(e.message);
                         $location.path(angularShiroConfig.login.path);
                     }
-                } catch (e) {
-                    $log.error(e.message);
-                    $location.search('sessionId', null);
-                    $location.path(angularShiroConfig.login.path);
                 }
             } else{
-                var state=subject.restoreAuth(angularShiroConfig);
                 doFilter(filtersResolver, $location);
-                if (!state&&subject.isRemembered() && !params.sessionId) {
-                        $location.search('sessionId', subject.getSession(false).getId());
-                    }
-                }
+            }
 
 	    });
 	});

@@ -33,7 +33,7 @@
  * 
  * @since 0.0.1
  */
-function Subject(authenticator, authorizer, authenticationResponseParser, $cookieStore) {
+function Subject(authenticator, authorizer, authenticationResponseParser) {
 
     /**
      * @name Subject#authenticated
@@ -45,7 +45,7 @@ function Subject(authenticator, authorizer, authenticationResponseParser, $cooki
     /**
      * 
      */
-    this.sessionManager = new SessionManager(new SessionDAO($cookieStore));
+    this.sessionManager = new SessionManager(new SessionDAO());
     /**
      * @private
      */
@@ -111,12 +111,12 @@ function Subject(authenticator, authorizer, authenticationResponseParser, $cooki
 	    //准备存储信息
         var sidSession = me.getSessionBySid(true,data[3].tokenSid);
         sidSession.setAttribute('token',data[0]);
-        me.sessionManager.update(sidSession);
+        me.sessionManager.updateSid(sidSession);
 
         //remeber me应该使用Cookie，当前不处理
 	    if (token.isRememberMe()) {
 		// put the token in session to auto login if needed
-		var session = me.getSession(true);
+		var session = me.getSession(true,data[3].remeberSid);
 		session.setAttribute('token', token);
 		me.sessionManager.update(session);
 		me.remembered = true;
@@ -142,25 +142,22 @@ function Subject(authenticator, authorizer, authenticationResponseParser, $cooki
 	return output;
     };
     this.restoreAuth=function(config) {
-        if(!this.isAuthenticated()){
-            //尝试恢复身份信息到内存
-            var session = this.sessionManager.getSession(config.tokenSid);
-            if (session !== null) {
-                var data = session.getAttribute('token');
-                if(data!==null) {
-                    var infos = authenticationResponseParser.parse(data);
-                    if (infos) {
-                        this.sidSession=session;
-                        this.authenticationInfo = infos.authc;
-                        this.authorizer.setAuthorizationInfo(infos.authz);
-                        this.authenticated = true;
-                        return true;
-                    }
+        //尝试恢复身份信息到内存
+        var session = this.sessionManager.getSession(config.tokenSid);
+        if (session !== null) {
+            var data = session.getAttribute('token');
+            if(data!==null) {
+                var infos = authenticationResponseParser.parse(data);
+                if (infos) {
+                    this.sidSession=session;
+                    this.authenticationInfo = infos.authc;
+                    this.authorizer.setAuthorizationInfo(infos.authz);
+                    this.authenticated = true;
+                    return true;
                 }
             }
-            return false;
         }
-        return true;
+        return false;
     }
     /**
      * @ngdoc method
@@ -191,11 +188,11 @@ function Subject(authenticator, authorizer, authenticationResponseParser, $cooki
      * @return the application <code>Session</code> associated with this
      *         SubjectUser
      */
-    this.getSession = function(create) {
-	if (this.session === null && create) {
-	    this.session = this.sessionManager.start();
-	}
-	return this.session;
+    this.getSession = function(create,sessionId) {
+        if (this.session === null && create) {
+            this.session = this.sessionManager.start(sessionId);
+        }
+        return this.session;
     };
     this.getSessionBySid = function(create,sessionId) {
         if (this.sidSession === null && create) {

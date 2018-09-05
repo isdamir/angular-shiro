@@ -27,7 +27,8 @@ function AngularShiroConfigProvider() {
 	    api : '/api/logout',
 	    path : '/'
 	},
-	tokenSid : "angularShiroSid"
+	tokenSid : "angularShiroSid",
+    remeberSid : "angularShiroRemeber"
     };
 
     /**
@@ -134,6 +135,9 @@ function AngularShiroConfigProvider() {
     };
     this.setTokenSid = function (tsid) {
         options.tokenSid=tsid;
+    };
+    this.setRemeberSid = function (tsid) {
+        options.remeberSid=tsid;
     };
 
     this.$get = [ function() {
