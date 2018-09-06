@@ -29,7 +29,8 @@ function AngularShiroConfigProvider() {
 	},
 	tokenSid : "angularShiroSid",
     remeberSid : "angularShiroRemeber",
-    redirctSid : "angularShiroRedirct"
+    redirctSid : "angularShiroRedirct",
+    indexPath : "/index"
     };
 
     /**
@@ -142,6 +143,9 @@ function AngularShiroConfigProvider() {
     };
     this.setRedirctSid = function (tsid) {
         options.remeberSid=tsid;
+    };
+    this.setIndexPath = function (path) {
+        options.indexPath=path;
     };
 
     this.$get = [ function() {

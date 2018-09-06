@@ -27,7 +27,8 @@
         },
         tokenSid: 'angularShiroSid',
         remeberSid: 'angularShiroRemeber',
-        redirctSid: 'angularShiroRedirct'
+        redirctSid: 'angularShiroRedirct',
+        indexPath: '/index'
       };
     /**
      * 
@@ -137,6 +138,9 @@
     };
     this.setRedirctSid = function (tsid) {
       options.remeberSid = tsid;
+    };
+    this.setIndexPath = function (path) {
+      options.indexPath = path;
     };
     this.$get = [function () {
         return options;
@@ -2989,25 +2993,38 @@
           }
         }
       };
-      $rootScope.$on('$locationChangeStart', function (event, next, current) {
-        var params = $location.search();
-        if (!subject.isAuthenticated()) {
-          //��¼��ת��Ϣ����Ϣ��¼��Cookie
-          var curUrl = $location.path();
-          if (!(curUrl === '/' || curUrl === angularShiroConfig.login.path)) {
-            subject.sessionManager.sessionDAO.CookieUtil.set(angularShiroConfig.redirctSid, $location.url());
+      var visitFilter = function () {
+        var url = sessionStorage.getItem(angularShiroConfig.redirctSid);
+        if (url !== null) {
+          sessionStorage.removeItem(angularShiroConfig.redirctSid);
+          $location.path(decodeURIComponent(url)).replace();
+        } else {
+          var mainUrl = $location.path();
+          if (mainUrl === '/' || mainUrl === angularShiroConfig.login.path) {
+            $location.path(angularShiroConfig.indexPath).replace();
+          } else {
+            doFilter(filtersResolver, $location);
           }
+        }
+      };
+      $rootScope.$on('$locationChangeStart', function (event, next, current) {
+        if (!subject.isAuthenticated()) {
           var state = subject.restoreAuth(angularShiroConfig);
           if (state) {
-            doFilter(filtersResolver, $location);
+            visitFilter();
           } else {
             try {
               var output = subject.rememberMe(angularShiroConfig.remeberSid);
               if (output !== false) {
                 output.then(function () {
-                  doFilter(filtersResolver, $location);
+                  visitFilter();
                 });
               } else {
+                //��¼��ת��Ϣ����Ϣ��¼��Session
+                var curUrl = $location.path();
+                if (!(curUrl === '/' || curUrl === angularShiroConfig.login.path)) {
+                  sessionStorage.setItem(angularShiroConfig.redirctSid, encodeURIComponent($location.url()));
+                }
                 $location.path(angularShiroConfig.login.path).replace();
               }
             } catch (e) {
@@ -3016,14 +3033,7 @@
             }
           }
         } else {
-          //���Իָ�����תǰ�ĵ�ַ
-          var url = subject.sessionManager.sessionDAO.CookieUtil.get(angularShiroConfig.redirctSid);
-          if (url !== null) {
-            subject.sessionManager.sessionDAO.CookieUtil.unset(angularShiroConfig.redirctSid);
-            $location.path(url).replace();
-          } else {
-            doFilter(filtersResolver, $location);
-          }
+          visitFilter();
         }
       });
     }

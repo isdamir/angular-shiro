@@ -10,6 +10,7 @@ var demo = angular
 							// authenticated to
 							// access any path
 							config.setFilter('/**/*','authc');
+							config.setIndexPath('/app');
 
 							$routeProvider.when('/login', {
 								templateUrl : 'partials/welcome.html'

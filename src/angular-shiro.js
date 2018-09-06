@@ -70,27 +70,39 @@ angular.module('angularShiro', [ 'angularShiro.services', 'angularShiro.directiv
 			break;
 		    }
 		}
-	    }
-	    $rootScope.$on('$locationChangeStart', function(event, next, current) {
-            var params = $location.search();
-            if (!subject.isAuthenticated()) {
-                //记录跳转信息，信息记录到Cookie
-                var curUrl=$location.path();
-                if(!(curUrl==="/"||curUrl=== angularShiroConfig.login.path)){
-                    subject.sessionManager.sessionDAO.CookieUtil.set(angularShiroConfig.redirctSid,$location.url());
+	    };
+	    var visitFilter = function() {
+            var url=sessionStorage.getItem(angularShiroConfig.redirctSid);
+            if(url!==null){
+                sessionStorage.removeItem(angularShiroConfig.redirctSid);
+                $location.path(decodeURIComponent(url)).replace();
+            }else {
+                var mainUrl = $location.path();
+                if (mainUrl === "/" || mainUrl === angularShiroConfig.login.path) {
+                    $location.path(angularShiroConfig.indexPath).replace();
+                } else {
+                    doFilter(filtersResolver, $location);
                 }
-
+            }
+        }
+	    $rootScope.$on('$locationChangeStart', function(event, next, current) {
+            if (!subject.isAuthenticated()) {
                 var state=subject.restoreAuth(angularShiroConfig);
                 if(state) {
-                    doFilter(filtersResolver, $location);
+                    visitFilter();
                 }else{
                     try {
                         var output = subject.rememberMe(angularShiroConfig.remeberSid);
                         if (output !== false) {
                             output.then(function () {
-                                doFilter(filtersResolver, $location);
+                                visitFilter();
                             });
                         } else {
+                            //记录跳转信息，信息记录到Session
+                            var curUrl=$location.path();
+                            if(!(curUrl==="/"||curUrl=== angularShiroConfig.login.path)){
+                                sessionStorage.setItem(angularShiroConfig.redirctSid, encodeURIComponent($location.url()));
+                            }
                             $location.path(angularShiroConfig.login.path).replace();
                         }
                     } catch (e) {
@@ -99,14 +111,7 @@ angular.module('angularShiro', [ 'angularShiro.services', 'angularShiro.directiv
                     }
                 }
             } else{
-                //尝试恢复到跳转前的地址
-                var url=subject.sessionManager.sessionDAO.CookieUtil.get(angularShiroConfig.redirctSid);
-                if(url!==null){
-                    subject.sessionManager.sessionDAO.CookieUtil.unset(angularShiroConfig.redirctSid);
-                    $location.path(url).replace();
-                }else {
-                    doFilter(filtersResolver, $location);
-                }
+                visitFilter();
             }
 	    });
 	});
