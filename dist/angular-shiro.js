@@ -1,6 +1,6 @@
 /**
  * angular-shiro
- * @version v0.1.3 - 2018-09-05
+ * @version v0.1.3 - 2018-09-06
  * @link https://github.com/gnavarro77/angular-shiro
  * @author Gilles Navarro ()
  * @license MIT License, http://www.opensource.org/licenses/MIT
@@ -26,7 +26,8 @@
           path: '/'
         },
         tokenSid: 'angularShiroSid',
-        remeberSid: 'angularShiroRemeber'
+        remeberSid: 'angularShiroRemeber',
+        redirctSid: 'angularShiroRedirct'
       };
     /**
      * 
@@ -132,6 +133,9 @@
       options.tokenSid = tsid;
     };
     this.setRemeberSid = function (tsid) {
+      options.remeberSid = tsid;
+    };
+    this.setRedirctSid = function (tsid) {
       options.remeberSid = tsid;
     };
     this.$get = [function () {
@@ -2988,6 +2992,11 @@
       $rootScope.$on('$locationChangeStart', function (event, next, current) {
         var params = $location.search();
         if (!subject.isAuthenticated()) {
+          //��¼��ת��Ϣ����Ϣ��¼��Cookie
+          var curUrl = $location.path();
+          if (!(curUrl === '/' || curUrl === angularShiroConfig.login.path)) {
+            subject.sessionManager.sessionDAO.CookieUtil.set(angularShiroConfig.redirctSid, $location.url());
+          }
           var state = subject.restoreAuth(angularShiroConfig);
           if (state) {
             doFilter(filtersResolver, $location);
@@ -2999,15 +3008,22 @@
                   doFilter(filtersResolver, $location);
                 });
               } else {
-                $location.path(angularShiroConfig.login.path);
+                $location.path(angularShiroConfig.login.path).replace();
               }
             } catch (e) {
               $log.error(e.message);
-              $location.path(angularShiroConfig.login.path);
+              $location.path(angularShiroConfig.login.path).replace();
             }
           }
         } else {
-          doFilter(filtersResolver, $location);
+          //���Իָ�����תǰ�ĵ�ַ
+          var url = subject.sessionManager.sessionDAO.CookieUtil.get(angularShiroConfig.redirctSid);
+          if (url !== null) {
+            subject.sessionManager.sessionDAO.CookieUtil.unset(angularShiroConfig.redirctSid);
+            $location.path(url).replace();
+          } else {
+            doFilter(filtersResolver, $location);
+          }
         }
       });
     }

@@ -15,7 +15,9 @@ var demo = angular
 								templateUrl : 'partials/welcome.html'
 							}).when('/app', {
 								templateUrl : 'partials/app.html'
-							}).otherwise({
+							}).when('/xxx', {
+                                templateUrl : 'partials/app.html'
+                            }).otherwise({
 								redirectTo : '/login'
 							});
 

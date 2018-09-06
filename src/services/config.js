@@ -28,7 +28,8 @@ function AngularShiroConfigProvider() {
 	    path : '/'
 	},
 	tokenSid : "angularShiroSid",
-    remeberSid : "angularShiroRemeber"
+    remeberSid : "angularShiroRemeber",
+    redirctSid : "angularShiroRedirct"
     };
 
     /**
@@ -137,6 +138,9 @@ function AngularShiroConfigProvider() {
         options.tokenSid=tsid;
     };
     this.setRemeberSid = function (tsid) {
+        options.remeberSid=tsid;
+    };
+    this.setRedirctSid = function (tsid) {
         options.remeberSid=tsid;
     };
 
